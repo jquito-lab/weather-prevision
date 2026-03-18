@@ -41,7 +41,10 @@ def mask_token_in_url(url: str) -> str:
 
 STATION_ID = "07510"  # Identifiant de la station Bordeaux-Mérignac sur InfoClimat
 
+
 BASE_URL = "https://www.infoclimat.fr/opendata/"
+# Dossier par défaut où une app peut déposer les CSV téléchargés
+DEFAULT_OUTPUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "downloads"))
 
 
 def build_url(station_id: str, start_date: str, end_date: str, fmt: str = "csv") -> str:
@@ -370,23 +373,52 @@ def generate_chunks(start_date, end_date, max_days=7):
         current = chunk_end + timedelta(days=1)
 
 
-def main():
-    # 1) Demande des paramètres à l'utilisateur (dates + fichier de sortie).
-    start_date, end_date, output_file = ask_date_and_filename_via_popup()
-    print(f"Période demandée : {start_date} -> {end_date}")
-    print(f"Fichier de sortie : {output_file}")
+# ----------------------------------------------------------
+# Fonction réutilisable pour une app (Tkinter ou autre)
+# ----------------------------------------------------------
+def download_infoclimat_range(
+    start_date,
+    end_date,
+    output_dir: str | None = None,
+    filename: str | None = None,
+    station_id: str = STATION_ID,
+    max_days_per_request: int = 7,
+) -> tuple[str, pd.DataFrame]:
+    """Télécharge une plage de dates Infoclimat, consolide et sauvegarde un CSV.
 
-    # 2) Téléchargement : l'API impose 7 jours max → on découpe et on agrège bloc par bloc.
-    all_dfs = []
+    Cette fonction est pensée pour être appelée depuis une application (Tkinter ou autre)
+    sans afficher de popups.
 
-    for chunk_start, chunk_end in generate_chunks(start_date, end_date, max_days=7):
+    Args:
+        start_date: datetime.date (incluse)
+        end_date: datetime.date (incluse)
+        output_dir: dossier cible (créé si absent). Par défaut: ../downloads
+        filename: nom de fichier (optionnel). Si None, un nom est généré.
+        station_id: ID de station Infoclimat
+        max_days_per_request: limite Infoclimat (7 jours max)
+
+    Returns:
+        (output_path, df_all)
+    """
+    if output_dir is None:
+        output_dir = DEFAULT_OUTPUT_DIR
+    os.makedirs(output_dir, exist_ok=True)
+
+    if not filename:
+        filename = f"infoclimat_{station_id}_{start_date.isoformat()}_{end_date.isoformat()}.csv"
+    if not filename.lower().endswith(".csv"):
+        filename += ".csv"
+
+    output_path = os.path.join(output_dir, filename)
+
+    all_dfs: list[pd.DataFrame] = []
+
+    for chunk_start, chunk_end in generate_chunks(start_date, end_date, max_days=max_days_per_request):
         start_str = chunk_start.strftime("%Y-%m-%d")
         end_str = chunk_end.strftime("%Y-%m-%d")
         print(f"\nTéléchargement du bloc {start_str} -> {end_str}")
 
-        # fmt="csv" pour le parsing actuel (parse_infoclimat_csv). Si tu veux du JSON, mets fmt="json"
-        # et il faudra ajouter un parser JSON côté code.
-        url = build_url(STATION_ID, start_str, end_str, fmt="csv")
+        url = build_url(station_id, start_str, end_str, fmt="csv")
         csv_text = fetch_csv_from_infoclimat(url)
         df_chunk = parse_infoclimat_csv(csv_text)
 
@@ -396,18 +428,36 @@ def main():
             print(f"  -> {len(df_chunk)} lignes")
             all_dfs.append(df_chunk)
 
-    # 3) Consolidation : concatène tous les blocs, trie, et supprime les doublons.
     if not all_dfs:
-        print("Aucune donnée sur toute la période demandée.")
-        return
+        raise RuntimeError("Aucune donnée récupérée sur toute la période demandée.")
 
     df_all = pd.concat(all_dfs, ignore_index=True)
     df_all = df_all.sort_values("datetime_utc")
     df_all = df_all.drop_duplicates(subset=["datetime_utc", "station_id"])
 
-    # 4) Export : écrit le CSV final sur disque.
-    df_all.to_csv(output_file, index=False)
-    print(f"\nDonnées consolidées sauvegardées dans {output_file}")
+    df_all.to_csv(output_path, index=False)
+    return output_path, df_all
+
+
+def main():
+    # 1) Demande des paramètres à l'utilisateur (dates + fichier de sortie).
+    start_date, end_date, output_file = ask_date_and_filename_via_popup()
+    print(f"Période demandée : {start_date} -> {end_date}")
+    print(f"Fichier de sortie : {output_file}")
+
+    # 2) Téléchargement + consolidation + export
+    # Ici on écrit dans le dossier courant (comportement identique à avant),
+    # mais la fonction est réutilisable par une app.
+    out_path, df_all = download_infoclimat_range(
+        start_date=start_date,
+        end_date=end_date,
+        output_dir=os.getcwd(),
+        filename=output_file,
+        station_id=STATION_ID,
+        max_days_per_request=7,
+    )
+
+    print(f"\nDonnées consolidées sauvegardées dans {out_path}")
     print(f"Nombre total de lignes : {len(df_all)}")
 
 
