@@ -11,6 +11,8 @@ from tensorflow.keras.callbacks import EarlyStopping
 
 #%% ----------------- Récupération et normalisation des entrées ------------------- #
 
+train_file = "/home/jay/info/GIT/weather-prevision/codes/half_train.csv"
+
 def calculate_date(str_date):
     month = int(str_date[0:2]) 
     n_days = 0
@@ -46,9 +48,9 @@ def get_mean_std(filename, i_col):
     return np.mean(tab), np.std(tab)
         
 # Constantes
-mu_T, sig_T = get_mean_std("test_data.csv", 3)
-mu_P, sig_P = get_mean_std("test_data.csv", 4)
-mu_r, sig_r = get_mean_std("test_data.csv", 9)    
+mu_T, sig_T = get_mean_std(train_file, 3)
+mu_P, sig_P = get_mean_std(train_file, 4)
+mu_r, sig_r = get_mean_std(train_file, 9)    
 
 def get_norm_data_from_file(filename):
     humidity = []
@@ -82,11 +84,11 @@ def get_norm_data_from_file(filename):
         N = 0
         for line in csvfile:
             if line[1] != '*':
-                n += 1  
+                n += 1
                 N += 1
-                date = calculate_date(line[1][5:10]) 
-                day_sin.append(np.sin(2*np.pi*date/365))
-                day_cos.append(np.cos(2*np.pi*date/365))
+                date = calculate_date(line[1][5:10])
+                day_sin.append(np.sin(2*np.pi*date/365)) 
+                day_cos.append(np.cos(2*np.pi*date/365)) 
                 
                 hour = float(line[2])
                 hour_sin.append(np.sin(2*np.pi*hour/24))
@@ -119,7 +121,6 @@ def get_norm_data_from_file(filename):
             else:
                 sep_found = True
                 humidity = np.array(humidity) / 100
-                
                 temp = (np.array(temp) - mu_T) / sig_T
                 press = (np.array(press) - mu_P) / sig_P
                 rain_log = (np.array(rain_log) - mu_r) / sig_r
@@ -168,7 +169,7 @@ lookback = 48
 n_inputs = 8
 window_size = 24
 
-train_chunks = get_norm_data_from_file("train_data.csv")
+train_chunks = get_norm_data_from_file(train_file)
 X_train, Y_rain_train, Y_temp_train = [], [], []
 
 
@@ -238,10 +239,16 @@ model.fit(
     callbacks=[early_stop]
     )
 
+#%% --------------------- Importation du réseau ------------------------ #
+
+model = tf.keras.models.load_model("./saved_model.keras", custom_objects=None, compile=True, safe_mode=True)
+
 
 #%% --------------------- Evaluation du réseau ------------------------- #
 
-test_chunks = get_norm_data_from_file("test_data.csv")
+test_file = "test_data.csv"
+
+test_chunks = get_norm_data_from_file(test_file)
 
 
 X_test, Y_temp_test, Y_rain_test = [], [], []
@@ -279,13 +286,13 @@ Y_rain_pred_real = Y_rain_pred
 Y_temp_test_real = denormalize_temp(Y_temp_test)
 
 def display_pred_test_temp(idx):
-    hours = range(1,25)
+    hours = range(1, window_size+1)
     
     loss = model.evaluate(np.array([X_test[idx]]), {"temperature": np.array([Y_temp_test[idx]]), "rain": np.array([Y_rain_test[idx]])})
-    strdate = idx_to_date("test_data.csv", idx)
+    strdate = idx_to_date(test_file, idx)
 
     plt.figure()
-    plt.xlim(0,25)
+    plt.xlim(0,window_size+1)
     plt.xlabel("x (heures)")
     plt.ylabel("T (°C)")
     plt.ylim(int(min(0, np.min(Y_temp_pred_real[idx]), np.min(Y_temp_test_real[idx]) - 1)), int(5 + max( np.max(Y_temp_pred_real[idx]), np.max(Y_temp_test_real[idx]) )))
@@ -301,7 +308,7 @@ def display_pred_test_rain(idx):
     hours = range(1,25)
     
     loss = model.evaluate(np.array([X_test[idx]]), {"temperature": np.array([Y_temp_test[idx]]), "rain": np.array([Y_rain_test[idx]])})
-    strdate = idx_to_date("test_data.csv", idx)
+    strdate = idx_to_date(test_file, idx)
     
     plt.figure()
     plt.ylim(-0.1,1)
@@ -315,4 +322,21 @@ def display_pred_test_rain(idx):
     plt.grid()
     plt.show()
 
-display_pred_test_temp(144)
+Y_temp_next, Y_rain_next = model.predict(np.array([test_chunks[0][95:143]]))
+
+Y_temp_next = denormalize_temp(Y_temp_next)
+actual_temp = [8.5, 9., 8.9, 8.9, 8.9, 9.2, 8.5, 7.6, 7.7, 9.1, 11.1, 12.3, 12.7, 14., 14.2, 14.5, 14.3, 13.7, 13.7, 12.5, 10.6, 9.1, 8.9, 8.1]
+
+#%% --------------------- Sauvegarde du réseau ------------------------- #
+
+model.save("./saved_model.keras")
+
+
+
+
+
+
+
+
+
+
