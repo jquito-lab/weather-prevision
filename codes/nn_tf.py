@@ -11,7 +11,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 
 #%% ----------------- Récupération et normalisation des entrées ------------------- #
 
-train_file = "/home/jay/info/GIT/weather-prevision/codes/half_train.csv"
+train_file = "/home/jay/info/GIT/weather-prevision/codes/small_test.csv"
 
 def calculate_date(str_date):
     month = int(str_date[0:2]) 
@@ -246,7 +246,7 @@ model = tf.keras.models.load_model("./saved_model.keras", custom_objects=None, c
 
 #%% --------------------- Evaluation du réseau ------------------------- #
 
-test_file = "test_data.csv"
+test_file = "/home/jay/info/GIT/weather-prevision/codes/today_data.csv"
 
 test_chunks = get_norm_data_from_file(test_file)
 
@@ -295,7 +295,7 @@ def display_pred_test_temp(idx):
     plt.xlim(0,window_size+1)
     plt.xlabel("x (heures)")
     plt.ylabel("T (°C)")
-    plt.ylim(int(min(0, np.min(Y_temp_pred_real[idx]), np.min(Y_temp_test_real[idx]) - 1)), int(5 + max( np.max(Y_temp_pred_real[idx]), np.max(Y_temp_test_real[idx]) )))
+    plt.ylim(int(min(0, np.min(Y_temp_pred_real[idx]), np.min(Y_temp_test_real[idx]) - 2)), int(5 + max( np.max(Y_temp_pred_real[idx]), np.max(Y_temp_test_real[idx]) )))
     plt.plot(hours, Y_temp_pred_real[idx], '-r', label="Prediction")
     plt.plot(hours, Y_temp_test_real[idx], '-b', label="True")
     plt.title("Prédiction de température à x heures après la date:\n"+ strdate +f"\ntemp_loss = {loss[1]:.2f}\ntemp_mae = {loss[4]:.2f}")
