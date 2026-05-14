@@ -12,14 +12,30 @@ from data import download_infoclimat_range
 from parser import clean_csv_72h
 
 
-PROJECT_DIR  = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DOWNLOAD_DIR = os.path.join(PROJECT_DIR, "downloads")
+PROJECT_DIR   = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DOWNLOAD_DIR  = os.path.join(PROJECT_DIR, "downloads")
+ARTIFACTS_DIR = os.path.join(PROJECT_DIR, "artifacts")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 CODES_DIR      = os.path.abspath(os.path.dirname(__file__))
 TRAIN_SCRIPT   = os.path.join(CODES_DIR, "train.py")
 PREDICT_SCRIPT = os.path.join(CODES_DIR, "predict_gui.py")
 PYTHON_EXE     = sys.executable
+
+PRESET_MODELS = [
+    {
+        "label": "12 entrées  —  weather_model.keras",
+        "model": os.path.join(ARTIFACTS_DIR, "weather_model.keras"),
+        "norm":  os.path.join(ARTIFACTS_DIR, "norm_params.pkl"),
+        "extra": [],
+    },
+    {
+        "label": "8 entrées  —  8_inputs_model_2015-2026.keras",
+        "model": os.path.join(ARTIFACTS_DIR, "8_inputs_model_2015-2026.keras"),
+        "norm":  os.path.join(ARTIFACTS_DIR, "norm_params.pkl"),
+        "extra": ["--n-inputs", "8"],
+    },
+]
 
 # ── Palette ───────────────────────────────────────────────────────────── #
 BG       = "#0D1117"
@@ -119,6 +135,152 @@ class Card(tk.Frame):
         # Zone de contenu retournée
         self.body = tk.Frame(self, bg=SURFACE)
         self.body.pack(fill="x", pady=(4, 12))
+
+
+# ── Sélecteur de modèle ───────────────────────────────────────────────── #
+
+class ModelPickerDialog(tk.Toplevel):
+    """Dialog modal pour choisir le modèle et le fichier CSV de test."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Choisir un modèle")
+        self.configure(bg=BG)
+        self.resizable(False, False)
+        self.grab_set()
+
+        self.result = None  # (model_path, norm_path) ou None si annulé
+
+        self._choice = tk.IntVar(value=0)
+        self._custom_model = tk.StringVar()
+        self._custom_norm  = tk.StringVar()
+
+        self._build()
+        self.update_idletasks()
+        # centrage sur le parent
+        px = parent.winfo_rootx() + parent.winfo_width()  // 2
+        py = parent.winfo_rooty() + parent.winfo_height() // 2
+        self.geometry(f"+{px - 230}+{py - 180}")
+        self.wait_window()
+
+    def _build(self):
+        # ── Titre ──
+        hdr = tk.Frame(self, bg=SURFACE)
+        hdr.pack(fill="x")
+        tk.Label(hdr, text="  Choisir un modèle de prédiction",
+                 bg=SURFACE, fg=TEXT, font=(_FF, 11, "bold")).pack(
+                 side="left", padx=12, pady=10)
+        tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
+
+        body = tk.Frame(self, bg=BG)
+        body.pack(fill="x", padx=20, pady=12)
+
+        # ── Presets ──
+        tk.Label(body, text="Modèle prédéfini", bg=BG, fg=TEXT2,
+                 font=(_FF, 9, "bold")).pack(anchor="w", pady=(0, 6))
+
+        for i, p in enumerate(PRESET_MODELS):
+            exists = os.path.exists(p["model"])
+            color  = TEXT if exists else TEXT3
+            note   = "" if exists else "  (non entraîné)"
+            rb = tk.Radiobutton(
+                body, text=p["label"] + note,
+                variable=self._choice, value=i,
+                bg=BG, fg=color, selectcolor=SURFACE2,
+                activebackground=BG, activeforeground=TEXT,
+                font=_F10, state="normal" if exists else "disabled",
+                command=self._on_choice)
+            rb.pack(anchor="w", pady=2)
+
+        # Séparateur
+        tk.Frame(body, bg=SURFACE3, height=1).pack(fill="x", pady=10)
+
+        # ── Personnalisé ──
+        tk.Radiobutton(
+            body, text="Modèle personnalisé",
+            variable=self._choice, value=len(PRESET_MODELS),
+            bg=BG, fg=TEXT, selectcolor=SURFACE2,
+            activebackground=BG, activeforeground=TEXT,
+            font=_F10, command=self._on_choice).pack(anchor="w")
+
+        custom_grid = tk.Frame(body, bg=BG)
+        custom_grid.pack(fill="x", pady=(6, 0))
+
+        for row, (lbl, var, btn_cmd) in enumerate([
+            ("Modèle (.keras)", self._custom_model, self._browse_model),
+            ("Norm params (.pkl)", self._custom_norm,  self._browse_norm),
+        ]):
+            tk.Label(custom_grid, text=lbl, bg=BG, fg=TEXT3,
+                     font=_F9, width=18, anchor="w").grid(
+                     row=row, column=0, sticky="w", pady=3)
+            tk.Entry(custom_grid, textvariable=var,
+                     bg=SURFACE2, fg=TEXT, insertbackground=TEXT,
+                     relief="flat", bd=0, font=_F9, width=28,
+                     highlightthickness=1, highlightbackground=BORDER,
+                     highlightcolor=BLUE).grid(
+                     row=row, column=1, padx=(4, 4), ipady=4)
+            Btn(custom_grid, "…", btn_cmd,
+                bg=SURFACE3, fg=TEXT, hover=SURFACE2,
+                padx=6, pady=3, font=_F9).grid(row=row, column=2)
+
+        self._custom_frame = custom_grid
+        self._refresh_custom_state()
+
+        # ── Boutons ──
+        tk.Frame(self, bg=BORDER, height=1).pack(fill="x", pady=(8, 0))
+        btn_row = tk.Frame(self, bg=BG)
+        btn_row.pack(fill="x", padx=20, pady=10)
+        Btn(btn_row, "Annuler", self.destroy,
+            bg=SURFACE3, fg=TEXT, hover=SURFACE2,
+            padx=12, pady=6, font=_F10).pack(side="right", padx=(6, 0))
+        Btn(btn_row, "▶  Prédire", self._confirm,
+            bg=AMBER, fg="#FFFFFF", hover=AMBER_H,
+            padx=12, pady=6, font=_F10).pack(side="right")
+
+    def _on_choice(self):
+        self._refresh_custom_state()
+
+    def _refresh_custom_state(self):
+        is_custom = (self._choice.get() == len(PRESET_MODELS))
+        state = "normal" if is_custom else "disabled"
+        for w in self._custom_frame.winfo_children():
+            try:
+                w.config(state=state)
+            except tk.TclError:
+                pass
+
+    def _browse_model(self):
+        p = filedialog.askopenfilename(
+            title="Choisir le modèle (.keras)",
+            initialdir=ARTIFACTS_DIR,
+            filetypes=[("Keras model", "*.keras"), ("Tous", "*.*")])
+        if p:
+            self._custom_model.set(p)
+
+    def _browse_norm(self):
+        p = filedialog.askopenfilename(
+            title="Choisir les paramètres de normalisation (.pkl)",
+            initialdir=ARTIFACTS_DIR,
+            filetypes=[("Pickle", "*.pkl"), ("Tous", "*.*")])
+        if p:
+            self._custom_norm.set(p)
+
+    def _confirm(self):
+        choice = self._choice.get()
+        if choice < len(PRESET_MODELS):
+            p = PRESET_MODELS[choice]
+            self.result = (p["model"], p["norm"], p.get("extra", []))
+        else:
+            model = self._custom_model.get().strip()
+            norm  = self._custom_norm.get().strip()
+            if not model or not os.path.exists(model):
+                messagebox.showerror("Erreur", "Modèle introuvable.", parent=self)
+                return
+            if not norm or not os.path.exists(norm):
+                messagebox.showerror("Erreur", "Fichier .pkl introuvable.", parent=self)
+                return
+            self.result = (model, norm, [])
+        self.destroy()
 
 
 # ── App principale ────────────────────────────────────────────────────── #
@@ -368,17 +530,19 @@ class App(tk.Frame):
             self.append_log(str(e), "error")
             messagebox.showerror("Erreur parser", str(e))
 
-    def run_script_async(self, script_path: str, title: str):
+    def run_script_async(self, script_path: str, title: str, extra_args: list = None):
         if not os.path.exists(script_path):
             messagebox.showerror("Script introuvable", script_path)
             return
+
+        cmd = [PYTHON_EXE, script_path] + (extra_args or [])
 
         def _worker():
             self.log.after(0, self._set_status, f"{title}…", AMBER_H)
             self.append_log(f"─── {title} ───", "cmd")
             try:
                 proc = subprocess.Popen(
-                    [PYTHON_EXE, script_path],
+                    cmd,
                     cwd=CODES_DIR,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
@@ -407,7 +571,16 @@ class App(tk.Frame):
         self.run_script_async(TRAIN_SCRIPT, "TRAIN")
 
     def on_predict(self):
-        self.run_script_async(PREDICT_SCRIPT, "PREDICT")
+        dlg = ModelPickerDialog(self.master)
+        if dlg.result is None:
+            return
+        model_path, norm_path, extra = dlg.result
+        model_name = os.path.basename(model_path)
+        self.append_log(f"Modèle sélectionné : {model_name}", "info")
+        self.run_script_async(
+            PREDICT_SCRIPT, "PREDICT",
+            extra_args=["--model", model_path, "--norm", norm_path] + extra
+        )
 
 
 # ── Entry point ───────────────────────────────────────────────────────── #

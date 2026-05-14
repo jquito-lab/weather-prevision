@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import argparse
 import os
 import sys
 import csv
@@ -8,7 +9,7 @@ import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import tkinter as tk
-from tkinter import simpledialog, messagebox, ttk
+from tkinter import simpledialog, messagebox, ttk, filedialog
 from tensorflow.keras.models import load_model
 
 # ── Palette (identique à app_gui.py) ─────────────────────────────────── #
@@ -109,29 +110,48 @@ BASE_DIR = os.path.dirname(__file__)
 PROJECT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
 ARTIFACTS_DIR = os.path.join(PROJECT_DIR, "artifacts")
 
-MODEL_PATH = first_existing([
+_ap = argparse.ArgumentParser(add_help=False)
+_ap.add_argument("--model",    default=None)
+_ap.add_argument("--norm",     default=None)
+_ap.add_argument("--n-inputs", type=int, default=None, dest="n_inputs")
+_cli, _ = _ap.parse_known_args()
+
+MODEL_PATH = _cli.model if _cli.model else first_existing([
     os.path.join(ARTIFACTS_DIR, "weather_model.keras"),
     os.path.join(PROJECT_DIR, "weather_model.keras"),
     os.path.join(BASE_DIR, "weather_model.keras"),
 ])
 
-NORM_PATH = first_existing([
+NORM_PATH = _cli.norm if _cli.norm else first_existing([
     os.path.join(ARTIFACTS_DIR, "norm_params.pkl"),
     os.path.join(PROJECT_DIR, "norm_params.pkl"),
     os.path.join(BASE_DIR, "norm_params.pkl"),
 ])
 
-TEST_CSV = first_existing([
-    os.path.join(BASE_DIR, "test_data.csv"),
-    os.path.join(PROJECT_DIR, "test_data.csv"),
-])
+DOWNLOAD_DIR = os.path.join(PROJECT_DIR, "downloads")
+
+
+def pick_test_csv():
+    root = tk.Tk()
+    root.withdraw()
+    initial = DOWNLOAD_DIR if os.path.isdir(DOWNLOAD_DIR) else BASE_DIR
+    path = filedialog.askopenfilename(
+        title="Choisir le fichier CSV de prédiction",
+        initialdir=initial,
+        filetypes=[("CSV", "*.csv"), ("Tous les fichiers", "*")],
+    )
+    root.destroy()
+    if not path:
+        raise RuntimeError("Aucun fichier de prédiction sélectionné.")
+    return path
+
 
 if MODEL_PATH is None:
-    raise FileNotFoundError("weather_model.keras introuvable. Lance d'abord codes/train.py.")
+    raise FileNotFoundError("weather_model.keras introuvable.")
 if NORM_PATH is None:
-    raise FileNotFoundError("norm_params.pkl introuvable. Lance d'abord codes/train.py.")
-if TEST_CSV is None:
-    raise FileNotFoundError("test_data.csv introuvable (codes/ ou racine).")
+    raise FileNotFoundError("norm_params.pkl introuvable.")
+
+TEST_CSV = pick_test_csv()
 
 print("MODEL:", MODEL_PATH)
 print("NORM :", NORM_PATH)
@@ -424,6 +444,7 @@ class ForecastNavigator(tk.Toplevel):
 
         self._build_ui()
         self._build_global_tab()
+        self._build_global_rain_tab()
         self.refresh()
 
     # ---- UI construction ----
@@ -543,12 +564,14 @@ class ForecastNavigator(tk.Toplevel):
         nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True, padx=0, pady=0)
 
-        self.tab_temp   = tk.Frame(nb, bg=BG)
-        self.tab_rain   = tk.Frame(nb, bg=BG)
-        self.tab_global = tk.Frame(nb, bg=BG)
-        nb.add(self.tab_temp,   text="  🌡  Température  ")
-        nb.add(self.tab_rain,   text="  🌧  Pluie  ")
-        nb.add(self.tab_global, text="  📊  Vue globale  ")
+        self.tab_temp        = tk.Frame(nb, bg=BG)
+        self.tab_rain        = tk.Frame(nb, bg=BG)
+        self.tab_global      = tk.Frame(nb, bg=BG)
+        self.tab_global_rain = tk.Frame(nb, bg=BG)
+        nb.add(self.tab_temp,        text="  🌡  Température  ")
+        nb.add(self.tab_rain,        text="  🌧  Pluie  ")
+        nb.add(self.tab_global,      text="  📊  Vue globale  ")
+        nb.add(self.tab_global_rain, text="  🌧  Vue globale pluie  ")
 
         # Temp figure
         self.fig_temp = Figure(figsize=(9, 4.5), dpi=100, facecolor=SURFACE)
@@ -676,6 +699,106 @@ class ForecastNavigator(tk.Toplevel):
         canvas.get_tk_widget().pack(fill="both", expand=True)
         canvas.draw()
 
+    def _build_global_rain_tab(self):
+        """Onglet Vue globale pluie : confusion matrix + distribution probas + F1 par heure."""
+        fig = Figure(figsize=(13, 5), dpi=100, facecolor=SURFACE)
+        _lg = dict(framealpha=0.2, facecolor=SURFACE2, edgecolor=BORDER,
+                   labelcolor=TEXT2, fontsize=8)
+
+        y_pred_proba = self.y_rain_pred.ravel()
+        y_true_bin   = self.y_rain_true.ravel().astype(int)
+        y_pred_bin   = (y_pred_proba >= 0.5).astype(int)
+
+        tp = int(np.sum((y_pred_bin == 1) & (y_true_bin == 1)))
+        fp = int(np.sum((y_pred_bin == 1) & (y_true_bin == 0)))
+        fn = int(np.sum((y_pred_bin == 0) & (y_true_bin == 1)))
+        tn = int(np.sum((y_pred_bin == 0) & (y_true_bin == 0)))
+
+        # --- Matrice de confusion ---
+        ax_cm = fig.add_subplot(131)
+        _dark_ax(ax_cm)
+
+        cm = np.array([[tn, fp], [fn, tp]], dtype=float)
+        cm_norm = cm / (cm.sum(axis=1, keepdims=True) + 1e-7)  # normalisation par ligne (recall)
+
+        im = ax_cm.imshow(cm_norm, cmap="Blues", vmin=0, vmax=1, aspect="auto")
+        fig.colorbar(im, ax=ax_cm, fraction=0.046, pad=0.04)
+
+        labels = [["VN", "FP"], ["FN", "VP"]]
+        for i in range(2):
+            for j in range(2):
+                count = int(cm[i, j])
+                pct   = cm_norm[i, j]
+                color = "white" if pct > 0.5 else TEXT
+                ax_cm.text(j, i, f"{labels[i][j]}\n{count}\n({pct:.1%})",
+                           ha="center", va="center", fontsize=9,
+                           color=color, fontweight="bold")
+
+        ax_cm.set_xticks([0, 1])
+        ax_cm.set_yticks([0, 1])
+        ax_cm.set_xticklabels(["Prédit sec", "Prédit pluie"], fontsize=8)
+        ax_cm.set_yticklabels(["Réel sec", "Réel pluie"], fontsize=8)
+        ax_cm.set_title("Matrice de confusion", color=TEXT)
+
+        total = tp + fp + fn + tn
+        acc   = (tp + tn) / (total + 1e-7)
+        prec  = tp / (tp + fp + 1e-7)
+        rec   = tp / (tp + fn + 1e-7)
+        f1    = 2 * prec * rec / (prec + rec + 1e-7)
+        ax_cm.text(0.5, -0.22,
+                   f"Acc={acc:.1%}  F1={f1:.1%}  Préc={prec:.1%}  Rappel={rec:.1%}",
+                   transform=ax_cm.transAxes, ha="center", fontsize=7.5,
+                   color=TEXT2)
+
+        # --- Distribution des probabilités prédites ---
+        ax_d = fig.add_subplot(132)
+        _dark_ax(ax_d)
+
+        proba_sec   = y_pred_proba[y_true_bin == 0]
+        proba_pluie = y_pred_proba[y_true_bin == 1]
+        bins = np.linspace(0, 1, 30)
+
+        ax_d.hist(proba_sec,   bins=bins, alpha=0.65, color=ACCENT,  label=f"Réel sec   (n={len(proba_sec)})",   density=True)
+        ax_d.hist(proba_pluie, bins=bins, alpha=0.65, color=C_PRED,  label=f"Réel pluie (n={len(proba_pluie)})", density=True)
+        ax_d.axvline(0.5, color=TEXT3, linestyle="--", linewidth=1.2, label="Seuil 0.5")
+        ax_d.set_xlabel("Probabilité prédite")
+        ax_d.set_ylabel("Densité")
+        ax_d.set_title("Distribution des probabilités")
+        ax_d.legend(**_lg)
+        ax_d.grid(True, alpha=0.1, color=BORDER, axis="y")
+
+        # --- F1 / Précision / Rappel par heure h+1 → h+24 ---
+        ax_hr = fig.add_subplot(133)
+        _dark_ax(ax_hr)
+
+        hours  = list(range(1, 25))
+        f1s, precs, recs = [], [], []
+        for h in range(24):
+            yt_h = self.y_rain_true[:, h].ravel().astype(int)
+            yp_h = (self.y_rain_pred[:, h].ravel() >= 0.5).astype(int)
+            _tp = int(np.sum((yp_h == 1) & (yt_h == 1)))
+            _fp = int(np.sum((yp_h == 1) & (yt_h == 0)))
+            _fn = int(np.sum((yp_h == 0) & (yt_h == 1)))
+            _p  = _tp / (_tp + _fp + 1e-7)
+            _r  = _tp / (_tp + _fn + 1e-7)
+            _f1 = 2 * _p * _r / (_p + _r + 1e-7)
+            f1s.append(_f1); precs.append(_p); recs.append(_r)
+
+        ax_hr.plot(hours, f1s,   color=C_TRUE,  linewidth=2,   label="F1")
+        ax_hr.plot(hours, precs, color=ACCENT,  linewidth=1.5, linestyle="--", label="Précision")
+        ax_hr.plot(hours, recs,  color="#D29922", linewidth=1.5, linestyle=":",  label="Rappel")
+        ax_hr.set_ylim(0, 1.05)
+        ax_hr.set_xlabel("Heure h+1 … h+24")
+        ax_hr.set_ylabel("Score")
+        ax_hr.set_title("F1 / Précision / Rappel par heure")
+        ax_hr.legend(**_lg)
+        ax_hr.grid(True, alpha=0.1, color=BORDER)
+
+        fig.tight_layout(pad=2.2)
+        canvas = FigureCanvasTkAgg(fig, master=self.tab_global_rain)
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        canvas.draw()
+
     # ---- Refresh current sample ----
 
     def refresh(self):
@@ -796,8 +919,28 @@ def main():
     # car predict_gui.py n'a besoin que de model.predict(), pas d'entraîner ni d'évaluer.
     model = load_model(MODEL_PATH, compile=False)
     with open(NORM_PATH, "rb") as f:
-        # mu_W/sig_W ajoutés depuis priorité 5 [PRIORITÉ 5]
-        mu_T, sig_T, mu_P, sig_P, mu_r, sig_r, mu_W, sig_W = pickle.load(f)
+        norm = pickle.load(f)
+
+    if isinstance(norm, dict):
+        mu_T  = norm["mu_T"];  sig_T = norm["sig_T"]
+        mu_P  = norm["mu_P"];  sig_P = norm["sig_P"]
+        mu_r  = norm["mu_r"];  sig_r = norm["sig_r"]
+        mu_W  = norm.get("mu_W", 0.0); sig_W = norm.get("sig_W", 1.0)
+        n_inputs_model = norm.get("n_inputs", 8)
+    else:
+        if len(norm) == 8:
+            mu_T, sig_T, mu_P, sig_P, mu_r, sig_r, mu_W, sig_W = norm
+            n_inputs_model = 12
+        else:
+            mu_T, sig_T, mu_P, sig_P, mu_r, sig_r = norm
+            mu_W, sig_W = 0.0, 1.0
+            n_inputs_model = 8
+
+    if _cli.n_inputs is not None:
+        n_inputs_model = _cli.n_inputs
+        print(f"FEATURES (forcé CLI) : {n_inputs_model}")
+    else:
+        print(f"FEATURES : {n_inputs_model}")
 
     test_chunks, test_raw_rain, date_chunks = get_norm_data_and_dates_from_file(
         TEST_CSV, mu_T, sig_T, mu_P, sig_P, mu_r, sig_r, mu_W, sig_W
@@ -809,6 +952,9 @@ def main():
 
     if len(X_test) == 0:
         raise RuntimeError("Impossible de construire X_test: test_data.csv trop court (il faut lookback + window_size).")
+
+    X_test = X_test[:, :, :n_inputs_model]
+    print(f"X_test shape après slicing : {X_test.shape}")
 
     Y_temp_pred, Y_rain_pred = model.predict(X_test, verbose=0)
     Y_temp_pred_real = denormalize_temp(Y_temp_pred, mu_T, sig_T)
