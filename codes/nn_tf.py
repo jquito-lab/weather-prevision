@@ -11,7 +11,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 
 #%% ----------------- Récupération et normalisation des entrées ------------------- #
 
-train_file = "/home/jay/info/GIT/weather-prevision/codes/small_test.csv"
+train_file = "/home/jay/info/GIT/weather-prevision/train_data_20150101_20260110.csv"
 
 def calculate_date(str_date):
     month = int(str_date[0:2]) 
@@ -285,7 +285,8 @@ Y_temp_pred_real = denormalize_temp(Y_temp_pred)
 Y_rain_pred_real = Y_rain_pred
 Y_temp_test_real = denormalize_temp(Y_temp_test)
 
-def display_pred_test_temp(idx):
+def display_pred_test_temp(j):
+    idx = max(24*j, 0)
     hours = range(1, window_size+1)
     
     loss = model.evaluate(np.array([X_test[idx]]), {"temperature": np.array([Y_temp_test[idx]]), "rain": np.array([Y_rain_test[idx]])})
@@ -304,7 +305,8 @@ def display_pred_test_temp(idx):
     plt.grid()
     plt.show()
 
-def display_pred_test_rain(idx):
+def display_pred_test_rain(j):
+    idx = max(24*j-3, 0)
     hours = range(1,25)
     
     loss = model.evaluate(np.array([X_test[idx]]), {"temperature": np.array([Y_temp_test[idx]]), "rain": np.array([Y_rain_test[idx]])})
@@ -329,7 +331,7 @@ actual_temp = [8.5, 9., 8.9, 8.9, 8.9, 9.2, 8.5, 7.6, 7.7, 9.1, 11.1, 12.3, 12.7
 
 #%% --------------------- Sauvegarde du réseau ------------------------- #
 
-model.save("./saved_model.keras")
+model.save("/home/jay/info/GIT/weather-prevision/codes/8_inputs_model_2015-2026.keras")
 
 
 
