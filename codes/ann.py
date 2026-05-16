@@ -159,8 +159,8 @@ def loss(expected: [float], output: [float]):
     s = 0.0
     for i in range(n_out):
         s = s + (expected[i] - output[i])**2
-    s = s/2
-    return s
+    s = s/L
+    return np.sqrt(s)
 
 def grad_descent(nn, inputs: [[float]], expected: [[float]], batch_size: int):
     # Ajuste les poids et biais du réseau pour minimiser la fonction de perte sur un ensemble de jeux entrées/sorties
