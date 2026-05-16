@@ -131,31 +131,13 @@ NORM_PATH = _cli.norm if _cli.norm else first_existing([
 DOWNLOAD_DIR = os.path.join(PROJECT_DIR, "downloads")
 
 
-def pick_test_csv():
-    root = tk.Tk()
-    root.withdraw()
-    initial = DOWNLOAD_DIR if os.path.isdir(DOWNLOAD_DIR) else BASE_DIR
-    path = filedialog.askopenfilename(
-        title="Choisir le fichier CSV de prédiction",
-        initialdir=initial,
-        filetypes=[("CSV", "*.csv"), ("Tous les fichiers", "*")],
-    )
-    root.destroy()
-    if not path:
-        raise RuntimeError("Aucun fichier de prédiction sélectionné.")
-    return path
-
-
 if MODEL_PATH is None:
     raise FileNotFoundError("weather_model.keras introuvable.")
 if NORM_PATH is None:
     raise FileNotFoundError("norm_params.pkl introuvable.")
 
-TEST_CSV = pick_test_csv()
-
 print("MODEL:", MODEL_PATH)
 print("NORM :", NORM_PATH)
-print("TEST :", TEST_CSV)
 
 
 # -------------------- Data pipeline -------------------- #
@@ -968,6 +950,18 @@ def main():
     root = tk.Tk()
     root.withdraw()
     _setup_style(root)
+
+    initial = DOWNLOAD_DIR if os.path.isdir(DOWNLOAD_DIR) else BASE_DIR
+    TEST_CSV = filedialog.askopenfilename(
+        parent=root,
+        title="Choisir le fichier CSV de prédiction",
+        initialdir=initial,
+        filetypes=[("CSV", "*.csv"), ("Tous les fichiers", "*")],
+    )
+    if not TEST_CSV:
+        raise RuntimeError("Aucun fichier de prédiction sélectionné.")
+    print("TEST :", TEST_CSV)
+
     dialog = ForecastDayDialog(root, "Choisir le point de départ")
 
     if dialog.result is None:

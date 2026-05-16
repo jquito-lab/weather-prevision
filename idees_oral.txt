@@ -9,5 +9,12 @@
 A faire:
 - code avec fenêtre pour prévoir la météo de tel lendemain.
 
+
+
+
+
+
+
+
 Suite du projet:
 - Mini-station météo
