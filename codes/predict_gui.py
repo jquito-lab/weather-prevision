@@ -924,6 +924,21 @@ def main():
     else:
         print(f"FEATURES : {n_inputs_model}")
 
+    root = tk.Tk()
+    root.withdraw()
+    _setup_style(root)
+
+    initial = DOWNLOAD_DIR if os.path.isdir(DOWNLOAD_DIR) else BASE_DIR
+    TEST_CSV = filedialog.askopenfilename(
+        parent=root,
+        title="Choisir le fichier CSV de prédiction",
+        initialdir=initial,
+        filetypes=[("CSV", "*.csv"), ("Tous les fichiers", "*")],
+    )
+    if not TEST_CSV:
+        raise RuntimeError("Aucun fichier de prédiction sélectionné.")
+    print("TEST :", TEST_CSV)
+
     test_chunks, test_raw_rain, date_chunks = get_norm_data_and_dates_from_file(
         TEST_CSV, mu_T, sig_T, mu_P, sig_P, mu_r, sig_r, mu_W, sig_W
     )
@@ -946,21 +961,6 @@ def main():
     global_metrics_temp = compute_metrics(Y_temp_test_real.ravel(), Y_temp_pred_real.ravel())
     global_metrics_rain = compute_metrics(Y_rain_test.ravel(), (Y_rain_pred > 0.5).astype(float).ravel())
     per_sample_mae_temp = compute_per_sample_mae(Y_temp_test_real, Y_temp_pred_real)
-
-    root = tk.Tk()
-    root.withdraw()
-    _setup_style(root)
-
-    initial = DOWNLOAD_DIR if os.path.isdir(DOWNLOAD_DIR) else BASE_DIR
-    TEST_CSV = filedialog.askopenfilename(
-        parent=root,
-        title="Choisir le fichier CSV de prédiction",
-        initialdir=initial,
-        filetypes=[("CSV", "*.csv"), ("Tous les fichiers", "*")],
-    )
-    if not TEST_CSV:
-        raise RuntimeError("Aucun fichier de prédiction sélectionné.")
-    print("TEST :", TEST_CSV)
 
     dialog = ForecastDayDialog(root, "Choisir le point de départ")
 
