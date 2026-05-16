@@ -147,6 +147,7 @@ class ModelPickerDialog(tk.Toplevel):
         self.title("Choisir un modèle")
         self.configure(bg=BG)
         self.resizable(False, False)
+        self.wait_visibility()
         self.grab_set()
 
         self.result = None  # (model_path, norm_path) ou None si annulé
