@@ -1,0 +1,257 @@
+# -*- coding: utf-8 -*-
+
+import numpy as np
+import random as rnd
+import csv 
+
+# Taux d'apprentissage
+ETA = 0.001
+
+#---------------------- fonctions mathématiques -----------------------
+
+def relu(tab: [float]):
+    return np.array([max(0, tab[i]) for i in range(len(tab))])
+
+def d_relu(t: np.array):
+    out = []
+    for i in range(len(t)):
+        if t[i] > 0 :   
+            out.append(1)
+        else:
+            out.append(0)
+    return np.array(out)
+
+
+def sigmoid(tab: [float]):
+    return 1/ (1 + np.exp(np.multiply(-1, tab)))
+
+#----------------------- création du réseau -------------------------
+
+def create_nn(layers: [int]):
+    assert(len(layers) > 1)
+    
+    n_layers = len(layers)
+    weights = []
+    biases = []
+    
+    for k in range(n_layers-1):
+        weights.append([])
+        
+        for i in range(layers[k]):
+            weights[k].append([0.0 for j in range(layers[k+1])])
+        weights[k] = np.array(weights[k])
+        
+    for k in range(n_layers-1):
+        biases.append([])
+        
+        for i in range(layers[k+1]):
+            biases[k].append(0.0)
+                
+                     
+    return {"L": layers, "W": weights, "B": biases}
+
+
+#--------------- fonctions d'initialisation du réseau --------------------
+
+def fill_nn_rand(nn):
+    for k in range(len(nn["L"]) - 1):
+        for i in range(nn["L"][k]):
+            for j in range(nn["L"][k+1]): 
+                nn["W"][k][i][j] = rnd.random()
+        for i in range(nn["L"][k+1]):
+            nn["B"][k][i] = rnd.random()
+    return
+
+def fill_nn(nn, weight, bias):
+    for k in range(len(nn["L"]) - 1):
+        for i in range(nn["L"][k]):            
+            for j in range(nn["L"][k+1]): 
+                nn["W"][k][i][j] = weight
+        for i in range(nn["L"][k+1]):
+            nn["B"][k][i] = bias
+    return
+
+def fill_nn_w(nn, weight):
+    for k in range(len(nn["L"]) - 1):
+        for i in range(nn["L"][k]):            
+            for j in range(nn["L"][k+1]): 
+                nn["W"][k][i][j] = weight
+    return
+
+def fill_nn_b(nn, bias):
+    for k in range(len(nn["L"]) - 1):
+        for i in range(nn["L"][k+1]):
+            nn["B"][k][i] = bias
+    return
+
+def heetal_init(nn):
+    L = len(nn["L"])
+    for l in range(L-1):
+        nn["W"][l] = np.random.randn(nn["L"][l], nn["L"][l+1])*np.sqrt(2/nn["L"][l-1])
+    return
+"""
+def xavier_init(nn):
+    L = len(nn["L"])
+    for l in range(L-1):
+        nn["W"][l] = np.random.randn(nn["L"][l-1],)"""
+#------------------------- fonctions principales -------------------------
+
+def forward_pass(inputs: [float], nn):
+    #Calcul des sorties du réseau nn à partir d'un jeu d'entrées
+    L = len(nn["L"])
+    
+    activations = {'A0': inputs, 'Z0': None}
+    
+    for k in range(1,L-1):
+        A_prev = activations[f"A{k-1}"]
+        
+        Wk = nn["W"][k-1]
+        Bk = nn["B"][k-1]
+        
+        Zk = np.dot(A_prev, Wk) + Bk
+        
+        Ak = relu(Zk)
+        
+        activations[f'Z{k}'] = Zk
+        activations[f'A{k}'] = Ak
+
+    A_prev = activations[f"A{L-2}"]
+    W = nn["W"][L-2]
+    B = nn["B"][L-2]    
+    
+    Z = np.dot(A_prev, W) + B
+    
+    A = sigmoid(Z)
+        
+    activations[f'Z{L-1}'] = Z
+    activations[f'A{L-1}'] = A
+    
+    return A, activations
+
+def backprop(nn, inputs: [float], expected: [float]):
+    #Calcule les dérivées de la fonction de cout par rapport à chaque poids -> sous forme de tableau
+    L = len(nn["L"])
+    
+    assert(len(inputs) == nn["L"][0] and len(expected) == nn["L"][L-1])
+    
+    outputs, activations = forward_pass(inputs, nn)
+    
+    A = [np.array(activations[f"A{k}"]) for k in range(L)]
+    Z = [np.array(activations[f"Z{k}"]) for k in range(L)]
+    Y = np.array(expected)
+    W = nn["W"]
+    delta = [np.array([]) for k in range(L)]
+    
+    delta[0] = None
+    delta[L-1] = A[L-1] - Y
+    
+    for k in range(L-2, 0, -1):
+        tab = np.dot(delta[k+1], np.transpose(W[k]))
+        delta[k] = tab * d_relu(Z[k])
+    
+    return delta, activations
+
+def loss(expected: [float], output: [float]):
+    # Calcule la perte, i.e l'erreur entre la sortie obtenue et celle attendue
+    L = len(nn["L"])
+    
+    n_out = nn["L"][L-1]
+    s = 0.0
+    for i in range(n_out):
+        s = s + (expected[i] - output[i])**2
+    s = s/2
+    return s
+
+def grad_descent(nn, inputs: [[float]], expected: [[float]], batch_size: int):
+    # Ajuste les poids et biais du réseau pour minimiser la fonction de perte sur un ensemble de jeux entrées/sorties
+    L = len(nn["L"])
+        
+    def epoch(e, batch_size, rest):
+        if rest == 0:
+            n_iter = batch_size
+        else:
+            n_iter = rest
+        
+        
+        batch_delta = []
+        batch_activations = []
+        
+        # backpropagation sur le batch
+        
+        for i in range(n_iter):
+            idx = batch_size * e + i
+            delta, activations = backprop(nn, inputs[idx], expected[idx])
+            
+            batch_delta.append(delta)
+            batch_activations.append(activations)
+        
+        # redéfinition des tableaux
+        
+        tab = [[batch_delta[i][j] for i in range(n_iter)] for j in range(1, len(batch_delta[0]))]
+        batch_delta = [None] + [np.transpose(tab[i]) for i in range(len(tab))]
+        
+        tab = [[batch_activations[i][f"A{j}"] for i in range(n_iter)] for j in range(L)]
+        batch_activations = [np.transpose(tab[i]) for i in range(len(tab))]
+        
+        # calcul des gradients
+        grad_w = [np.dot(batch_delta[k+1], np.transpose(batch_activations[k]))/ batch_size for k in range(L-1)]
+        grad_b = [np.array([sum(batch_delta[k][i]) for i in range(len(batch_delta[k]))]) / batch_size for k in range(1, L)]
+        
+        # descente du gradient : ajustement du réseau
+        for k in range(L-1):
+            nn["W"][k] = nn["W"][k] - ETA * np.transpose(grad_w[k])
+            nn["B"][k] = nn["B"][k] - ETA * grad_b[k]
+        return
+            
+    n_epoch = len(inputs) // batch_size
+    
+    print(f"Nombre d'époques: {n_epoch}")
+    
+    for e in range(n_epoch):
+        print(f"Epoque {e}")      
+        epoch(e, batch_size, 0)
+    
+    rest = len(inputs) % batch_size
+    
+    if rest != 0 :
+        epoch(n_epoch, batch_size, rest)
+    
+    return
+
+
+
+
+#---------------------------- tests et exemples --------------------------
+nn = create_nn([5, 8, 3])
+
+layers = nn["L"]
+w = nn["W"]
+b = nn['B']
+#L = len(layers)
+
+#OUT, ACT = forward_pass([0.1, 0.5, 0.4, 0.3, 0.1], nn)
+
+fill_nn(nn, 0.5, 0.1)
+
+#D, A = backprop(nn, [0.1, 0.5, 0.4, 0.3, 0.1], [0.92, 0.9, 0.99])
+
+inputs = [[0.1, 0.5, 0.4, 0.3, 0.1],
+          [0.1, 0.5, 0.4, 0.3, 0.1]]
+expected = [[0.92, 0.9, 0.99],
+            [0.92, 0.9, 0.99]]
+
+grad_descent(nn, inputs, expected, 2)
+
+#loss([0., 0.9, 0.9], OUT)
+
+#-------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
