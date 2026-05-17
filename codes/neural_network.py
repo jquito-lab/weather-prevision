@@ -2,7 +2,6 @@
 
 import numpy as np
 import random as rnd
-import csv 
 
 # Taux d'apprentissage
 ETA = 0.001
@@ -33,6 +32,8 @@ def create_nn(layers: [int]):
     n_layers = len(layers)
     weights = []
     biases = []
+    
+    # initialisation des poids et des biais à 0.
     
     for k in range(n_layers-1):
         weights.append([])
@@ -85,10 +86,12 @@ def fill_nn_b(nn, bias):
     return
 
 def heetal_init(nn):
+    # Initialisation des poids selon la distribution de He et al.
     L = len(nn["L"])
     for l in range(L-1):
         nn["W"][l] = np.random.randn(nn["L"][l], nn["L"][l+1])*np.sqrt(2/nn["L"][l-1])
     return
+
 """
 def xavier_init(nn):
     L = len(nn["L"])
@@ -103,6 +106,7 @@ def forward_pass(inputs: [float], nn):
     activations = {'A0': inputs, 'Z0': None}
     
     for k in range(1,L-1):
+        # Calcul des sorties du réseau couche par couche
         A_prev = activations[f"A{k-1}"]
         
         Wk = nn["W"][k-1]
@@ -121,7 +125,7 @@ def forward_pass(inputs: [float], nn):
     
     Z = np.dot(A_prev, W) + B
     
-    A = sigmoid(Z)
+    A = Z    # Activation linéaire en sortie
         
     activations[f'Z{L-1}'] = Z
     activations[f'A{L-1}'] = A
@@ -146,24 +150,25 @@ def backprop(nn, inputs: [float], expected: [float]):
     delta[L-1] = A[L-1] - Y
     
     for k in range(L-2, 0, -1):
+        # calcule par récurrence les dérivées par rapport à chaque couche en partant de la sortie.
         tab = np.dot(delta[k+1], np.transpose(W[k]))
         delta[k] = tab * d_relu(Z[k])
     
     return delta, activations
 
 def loss(expected: [float], output: [float]):
-    # Calcule la perte, i.e l'erreur entre la sortie obtenue et celle attendue
+    # Calcule le coût, i.e l'erreur entre la sortie obtenue et celle attendue
     L = len(nn["L"])
     
     n_out = nn["L"][L-1]
     s = 0.0
     for i in range(n_out):
         s = s + (expected[i] - output[i])**2
-    s = s/2
+    s = s/(2*n_out)
     return s
 
 def grad_descent(nn, inputs: [[float]], expected: [[float]], batch_size: int):
-    # Ajuste les poids et biais du réseau pour minimiser la fonction de perte sur un ensemble de jeux entrées/sorties
+    # Ajuste les poids et biais du réseau pour minimiser la fonction de coût sur un ensemble de jeux entrées/sorties
     L = len(nn["L"])
         
     def epoch(e, batch_size, rest):
@@ -217,6 +222,9 @@ def grad_descent(nn, inputs: [[float]], expected: [[float]], batch_size: int):
         epoch(n_epoch, batch_size, rest)
     
     return
+
+
+
 
 #---------------------------- tests et exemples --------------------------
 nn = create_nn([5, 8, 3])
