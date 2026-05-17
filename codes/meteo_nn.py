@@ -274,5 +274,68 @@ def graphs_rain(idx):
     
     return
 
+def rmse_temp():
+    s = 0
+    for i in range(len(test_inputs)):
+        test_input = test_inputs[i]
+        test_output = test_outputs[i]
+        
+        norm_prediction = np.array([neur.forward_pass(test_input, nn_meteo)[0][i] for i in range (0, 48, 2)])
+        norm_expected = np.array([test_output[i] for i in range(0, 48, 2)])
+        
+        denorm_prediction = norm_prediction * sig_T + mu_T
+        denorm_expected = norm_expected * sig_T + mu_T
+        
+        for j in range(len(denorm_prediction)):
+            s = s + (denorm_prediction[j] - denorm_expected[j])**2
+    s = s/ (len(test_inputs)*len(denorm_prediction))
+    return np.sqrt(s)
 
+def mae_temp():
+    s = 0
+    for i in range(len(test_inputs)):
+        test_input = test_inputs[i]
+        test_output = test_outputs[i]
+        
+        norm_prediction = np.array([neur.forward_pass(test_input, nn_meteo)[0][i] for i in range (0, 48, 2)])
+        norm_expected = np.array([test_output[i] for i in range(0, 48, 2)])
+        
+        denorm_prediction = norm_prediction * sig_T + mu_T
+        denorm_expected = norm_expected * sig_T + mu_T
+        
+        for j in range(len(denorm_prediction)):
+            s = s + np.abs(denorm_prediction[j] - denorm_expected[j])
+    s = s/ (len(test_inputs)*len(denorm_prediction))
+    return s
 
+def rmse_rain():
+    s = 0
+    for i in range(len(test_inputs)):
+        test_input = test_inputs[i]
+        test_output = test_outputs[i]
+        norm_prediction = np.array([neur.forward_pass(test_input, nn_meteo)[0][i] for i in range (1, 48, 2)])
+        norm_expected = np.array([test_output[i] for i in range(1, 48, 2)])
+        
+        denorm_prediction = np.exp(norm_prediction * sig_r + mu_r) - 1
+        denorm_expected = np.exp(norm_expected * sig_r + mu_r) - 1 
+        
+        for j in range(len(denorm_prediction)):
+            s = s + (denorm_prediction[j] - denorm_expected[j])**2
+    s = s/ (len(test_inputs)*len(denorm_prediction))
+    return np.sqrt(s)
+
+def mae_rain():
+    s = 0
+    for i in range(len(test_inputs)):
+        test_input = test_inputs[i]
+        test_output = test_outputs[i]
+        norm_prediction = np.array([neur.forward_pass(test_input, nn_meteo)[0][i] for i in range (1, 48, 2)])
+        norm_expected = np.array([test_output[i] for i in range(1, 48, 2)])
+        
+        denorm_prediction = np.exp(norm_prediction * sig_r + mu_r) - 1
+        denorm_expected = np.exp(norm_expected * sig_r + mu_r) - 1 
+        
+        for j in range(len(denorm_prediction)):
+            s = s + np.abs(denorm_prediction[j] - denorm_expected[j])
+    s = s/ (len(test_inputs)*len(denorm_prediction))
+    return s
