@@ -162,7 +162,7 @@ def idx_to_date(filename, idx):
 
 #%% -------------------------------- Création du réseau ----------------------------- #
 
-PLUIE_THRESHOLD = 0.5
+RAIN_THRESHOLD = 0.5
 
 lookback = 48
 n_inputs = 8
@@ -174,11 +174,13 @@ X_train, Y_rain_train, Y_temp_train = [], [], []
 
 def binarize(tab):
     for i in range(len(tab)):
-        if tab[i] > PLUIE_THRESHOLD:
+        if tab[i] > RAIN_THRESHOLD:
             tab[i] = 1
         else:
             tab[i] = 0
     
+
+# mise en forme des données d'entrées X_train et de sorties Y_*_train (pluie: modèle binaire)
 
 for chunk in train_chunks:
     for i in range(lookback, len(chunk)-window_size):
@@ -196,6 +198,9 @@ Y_rain_train = np.array(Y_rain_train)
 Y_temp_train = np.array(Y_temp_train)
 
 inputs = Input(shape=(lookback, n_inputs))
+
+
+# Initialisation du réseau avec les fonctions de tensorflow.keras
 
 X = LSTM(64, return_sequences=False)(inputs)
 X = Dropout(0.2)(X)
